@@ -86,6 +86,51 @@ car.test.frame[1:10,c(4,9)]
 ```r
 round(table(car.test.frame$"水平油耗")/4)
 library(sampling)
-
+set.seed(1234)
+car_order<-car.test.frame[order(car.test.frame$"水平油耗",decreasing=F),]
+sub=strata(car.test.frame,size = c(2,4,9),method = "srswor",stratanames = "水平油耗")
+train_car<-car.test.frame[-sub$ID_unit,]
+test_car<-car.test.frame[sub$ID_unit,]
+nrow(train_car)
+nrow(test_car)
 ```
+### CART应用 ###
+1.对"油耗"变量建立回归树--数字结果
+用除"分组油耗"以外的所有变量来对"油耗"变量建立决策树，且选择树的类型为回归树
+```r
+library(rpart)
+formula_car_reg<-油耗~价格+产地+可靠性+油耗+类型+车重+发动机功率+净马力  #设定模型公式
+rp_car_reg<-rpart(formula_car_reg,data = train_car,method = "anova")  #按照公式对训练集train_car构建回归树
+printcp(rp_car_reg) #导出回归树的cp表格
+#由此可以看到，在建树过程中用到的变量有"发动机功率"和"车重"这两种，且各节点的CP值、节点序号nsplit、错误率rel error、交互验证错误率xerror等也被列出，其中CP值对于选择控制树的复杂程度十分重要。
+#若想获得每个节点更详细的信息，可以对已有决策树模型rp_car_reg使用summary()函数，所得输出结果除了与上面printcp()给出值相同的部分外，另有变量重要程度(variable importance）、每一个分支变量对生成树的提升程度(improve)等信息。
+summary(rp_car_reg)
 
+rp_car_reg1<-rpart(formula_car_reg,data = train_car,method = "anova",minsplit=10)
+#将分支包含最小样本数minsplit从默认值20更改为10
+print(rp_car_reg1)
+printcp(rp_car_reg1)
+summary(rp_car_reg1)
+#当minsplit减少为10后，满足条件的节点包括根节点在内，从4个增加为6个。且在生成树过程中用到了"产地"、"车重"、"发动机功率"、"价格"和"类型"5个变量，相对于更改minsplit前多用到了三个变量。 
+
+rp_car_reg2<-rpart(formula_car_reg,data = train_car,method = "anova",cp=0.1)
+#将CP值从默认值0.01改为0.1
+print(rp_car_reg2)
+printcp(rp_car_reg2)
+summary(rp_car_reg2)
+#想较于CP取默认值0.01的决策树rp_car_reg，CP值为0.1的新决策树rp_car_reg2中包含根节点在内仅含有2个节点，且节点2的CP值为0.1，改过程中仅用到了"发动机功率"这一个变量。另外我们也可以通过剪枝函数prune.rpart来实现同样效果。
+rp_car_reg3<-prune.rpart(rp_car_reg,cp=0.1)
+print(rp_car_reg3)
+printcp(rp_car_reg3)
+
+#对所生成树的大小也可以通过深度参数maxdepth来控制，以下我们设置深度为1。从输出结果中各节点输出信息的缩进量可以看出，除了根节点外，新的决策树仅有一个层次，这与我们之前调节cp参数的效果相同。
+rp_car_reg4<-rpart(formula_car_reg,data = train_car,method = "anova",maxdepth=1)
+printcp(rp_car_reg4)
+```
+2.对"油耗"变量建立回归树--树形结果
+```r
+rp_car_plot<-rpart(formula_car_reg,data = train_car,method = "anova",minsplit=10)
+print(rp_car_plot)
+library(rpart.plot)
+rpart.plot(rp_car_plot)
+```
