@@ -134,3 +134,49 @@ print(rp_car_plot)
 library(rpart.plot)
 rpart.plot(rp_car_plot)
 ```
+决策树模拟出了人在做决策时的思维过程。当我们拿到一辆车的若干参数，比如发动机功率和价格，我们就可以根据这些参数的取值范围来大致估计出该车的油耗值，这对外行来说是十分有用。
+```r
+rpart.plot(rp_car_plot,type=4)  #各分变量在每一分支的取值范围都被标示出来，而且在每一节点的油耗预测值也被标出，给决策树的使用者带来了极大的方便。
+rpart.plot(rp_car_plot,branch=1) #当树的分支较多时，我们可以选择设置"分支"参数branch=1来获得垂直枝干形状的决策树以减少图形所占空间，使得树状图的枝干不再显得杂乱无章，更方便查看和分析
+rpart.plot(rp_car_plot,type=4,fallen.leaves = T) #当树的叶节点繁多，而又想从树中看清目标变量在所有分支下的预测结果时，可以将fallen.leaves设置为T,即表示将所有叶节点一致的摆放在树最下端，以方便查看。
+
+#其他绘制分类树的方法
+library(maptree)
+draw.tree(rp_car_plot,col=rep(1,7),nodeinfo = T)
+
+plot(rp_car_plot,uniform=T,main="plot:Regresion Tree")
+text(rp_car_plot,use.n=T,all=T)
+
+post(rp_car_plot,file="")
+```
+3.对"分组油耗"变量建立分类树
+
+```r
+formula_car_cla<-水平油耗~价格+产地+可靠性+类型+车重+发动机功率+净马力  #设定模型公式
+rp_car_cla<-rpart(formula_car_cla,train_car,method = "class",minsplit=5)
+print(rp_car_cla)
+rpart.plot(rp_car_cla,type=4,fallen.leaves = T)
+```
+一般来说，决策树大多是分类树，即决策树多被用于判断离散变量的取值，比如用于解决是否采纳某一方案、选择哪一种产品、属于哪一种类型等问题。
+
+4.对测试集test_car预测目标变量
+```r
+pre_car_cla<-predict(rp_car_cla,test_car,type="class")
+table(test_car$水平油耗,pre_car_cla)
+sum(test_car$水平油耗!=pre_car_cla)/nrow(test_car) #计算错误率
+```
+
+这里的预测仅仅是为了说明如何使用已建立的决策树对未知样本的目标变量进行预测，在这种小样本情况下计算错误率并没有太大的意义，因为数据一旦有微小变动，结果就将出现很大差异。
+
+### C4.5应用 ###
+用于实现C4.5算法的核心函数J48对于中文识别不太完善，因此我们这部分将使用原英文数据集中的变量名称。
+```r
+install.packages("RWeka")
+library(RWeka)
+names(train_car)<-c("Price","Country","Reliability","Mileage","Type","Weight","Disp.","HP","Oil_Consumption")
+train_car$Oil_Consumption<-as.factor(train_car$Oil_Consumption) #将分组油耗Oil_Consumption的变量类型改为因子型，使J48函数可识别
+formula<-Oil_Consumption~Price+Country+Reliability+Type+Weight+Disp.+HP
+c45_0<-J48(formula,train_car)
+summary(c45_0)
+c45_1<-J48(formula,train_car,control = Weka_control(M=3))  #通过设置control参数的取值之一M，即对每个叶节点设置最小观测样本量来对树进行剪枝。
+```
