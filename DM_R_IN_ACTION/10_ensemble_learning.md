@@ -74,3 +74,13 @@ err_minor_bag<-sum(pre_bag$class[sub_minor]!=data_test$y[sub_minor])/length(sub_
 err_major_bag<-sum(pre_bag$class[sub_major]!=data_test$y[sub_major])/length(sub_major) #计算no类的错误率
 ```
 no类的错误率仅为0.03430878，而yes类的错误率高达0.6978417，这正是由于数据的不平衡性造成的。Adaboost算法在处理不平衡数据集时具有一定优势。
+
+###Adaboost算法####
+```r
+boo<-boosting(y~.,data_train,mfinal = 5)
+pre_boo<-predict(boo,data_test)
+err_minor_boo<-sum(pre_boo$class[sub_minor]!=data_test$y[sub_minor])/length(sub_minor)  #计算yes类的错误率
+err_major_boo<-sum(pre_boo$class[sub_major]!=data_test$y[sub_major])/length(sub_major) #计算no类的错误率
+err_boo<-sum(pre_boo$class!=data_test$y)/nrow(data_test) #总错误率
+```
+除了少数类的预测错误率相对于Baggin算法有所提升，整体和多数类的错误率有轻微下降，Adaboost确实可以修正数据集的不平衡问题，但总体来说，与Bagging的效果差异不大。
