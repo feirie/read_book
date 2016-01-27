@@ -38,3 +38,69 @@ randomForest软件包建立了随机森林模型里的分类模型与回归模�
 >* 函数rfImpute()用来对数据中的缺失值进行插值，该函数也是随机森林模型的一个重要应用。
 >* 函数treesize()用来查看随机森林模型中，每一棵树所具有的节点个数。
 >* 函数randomForest()是随机森林中最核心的函数，它用来建立随机森林模型，该函数既可以建立判别模型，也可以用来建立回归模型，还可以建立无监督模型。
+
+1.importance()函数
+该函数用来提取随机森林模型中各个变量的重要性的度量结果，这也是随机森林模型的一大特点之一，这同时也是随机森林模型的一个重要应用领域。更具体地说，该函数的作用就是根据俩种不同的标准计算出各个变量对模型分类的影响程度，也就是看函数的哪个具体的特征模型类别具有重大的影响。这样就方便了我们对模型中众多的变量能够抓大放小，重点解决一些重要的变量
+importance(x, type=NULL, class=NULL, scale=TRUE, ...)
+>* x指代的是利用函数randomForest()生成的随机森林模型。
+>* class在这里主要针对随机森林的分类问题。当type=1时，该参数的取值范围为响应变量中的样本类别，并且返回结果为该参数的取值对应类别的重要值情况。
+>* type表示对于变量重要值的度量标准。type=1代表采用精度平均最小值做为度量标准;2代表采用节点不纯度的平均减少值作为度量标准。
+>* scale代表是否对变量重要值进行标准化，即是否将计算而得的重要值除以他们对应的标准差。
+
+```r
+set.seed(4)
+data(mtcars)
+mtcars_rf<-randomForest(mpg~.,data = mtcars,ntree = 1000,importance = T)
+importance(mtcars_rf)
+```
+
+2.MDSplot函数
+函数MDSplot()主要用于对随机森林模型进行可视化分析。该函数用于绘制在利用函数randomForest()建立随机森林过程中，所产生的临近矩阵经过标准化后的坐标图。这样的解释似乎过于抽象，读者可从实际应用的角度将其简单地解释为，在不同维度下各个样本点的分布情况图。  
+MDSplot(rf, fac, k=2, palette=NULL, pch=20, ...)
+>* rf表示随机森林模型。在构建模型时，必须在模型中包含有模型的临近矩阵。
+>* fac指代在构建rf随机森林模型过程中所使用到的一个因子向量。
+>* k用来决定所绘制的图像中所包含的经过缩放的维度。
+>* palette用来决定所绘制的图像中各个类别的样本点的颜色。
+>* pch用来决定所绘制的图像中各个类别的样本点的形状。
+```r
+set.seed(1)
+data(iris)
+iris_rf<-randomForest(Species~.,data = iris,proximity=T)
+MDSplot(iris_rf,iris$Species,palette = rep(1,3),pch=as.numeric(iris$Species))
+```
+在缩减为二维的情况下，第一个类别的特征较为明显，然而第二个类别和第三个类别却非常相近，甚至出现了交叉的情况。这样对分类模型的构建会产生一定的不利影响。
+
+3.rfImpute函数
+利用随机森林函数模型中的临近矩阵来对将要进行模型建立的预测数据中存在的缺失值进行插值，经过不断地迭代一次又一次地修正所插入的缺失值，尽可能得到最优的样本拟合值。
+
+rfImpute(x, y, iter=5, ntree=300, ...)  
+rfImpute(x, data, ..., subset)  
+>* x为一个含有一些缺失值的预测数据集，同时x也可以为一个公式
+>* y为响应变量向量，在该函数中，参数y不存在缺失值
+>* iter为插值过程中的迭代次数
+>* ntree为每次迭代生成的随机森林模型中的决策树数量
+>* subset决定了将采用的样本集
+
+```r
+data(iris)
+iris.na<-iris
+iris.na[75,2]<-NA
+iris.na[125,3]<-NA
+set.seed(111)
+iris.imputed<-rfImpute(Species~.,data=iris.na)
+list("real"=iris[c(75,125),1:4],"hava-NA"=iris.na[c(75,125),1:4],"disposed"=round(iris.imputed[c(75,125),2:5],1))
+```
+
+4.treesize函数  
+主要作用为查看随机森林模型中，每一棵树所具有的节点个数，它通常配合randomForest使用。
+treesize(x, terminal=TRUE)
+>* x为随机森林模型
+>* terminal主要用于决定节点的计数方式，如果为T，则只计算最终根节点数目，如果为F,将所有的节点全部计数。
+该函数所生成的是一个向量，该向量的长度等同于随机森林中决策树的数量。
+
+```r
+set.seed(1)
+data(iris)
+iris_rf<-randomForest(Species~.,data = iris,proximity=T)
+hist(treesize(iris_rf))
+```
