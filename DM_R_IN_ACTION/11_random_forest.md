@@ -54,7 +54,7 @@ mtcars_rf<-randomForest(mpg~.,data = mtcars,ntree = 1000,importance = T)
 importance(mtcars_rf)
 ```
 
-2.MDSplot函数
+2.MDSplot函数  
 函数MDSplot()主要用于对随机森林模型进行可视化分析。该函数用于绘制在利用函数randomForest()建立随机森林过程中，所产生的临近矩阵经过标准化后的坐标图。这样的解释似乎过于抽象，读者可从实际应用的角度将其简单地解释为，在不同维度下各个样本点的分布情况图。  
 MDSplot(rf, fac, k=2, palette=NULL, pch=20, ...)
 >* rf表示随机森林模型。在构建模型时，必须在模型中包含有模型的临近矩阵。
@@ -70,7 +70,7 @@ MDSplot(iris_rf,iris$Species,palette = rep(1,3),pch=as.numeric(iris$Species))
 ```
 在缩减为二维的情况下，第一个类别的特征较为明显，然而第二个类别和第三个类别却非常相近，甚至出现了交叉的情况。这样对分类模型的构建会产生一定的不利影响。
 
-3.rfImpute函数
+3.rfImpute函数  
 利用随机森林函数模型中的临近矩阵来对将要进行模型建立的预测数据中存在的缺失值进行插值，经过不断地迭代一次又一次地修正所插入的缺失值，尽可能得到最优的样本拟合值。
 
 rfImpute(x, y, iter=5, ntree=300, ...)  
@@ -91,7 +91,7 @@ iris.imputed<-rfImpute(Species~.,data=iris.na)
 list("real"=iris[c(75,125),1:4],"hava-NA"=iris.na[c(75,125),1:4],"disposed"=round(iris.imputed[c(75,125),2:5],1))
 ```
 
-4.treesize函数  
+4.treesize函数    
 主要作用为查看随机森林模型中，每一棵树所具有的节点个数，它通常配合randomForest使用。
 treesize(x, terminal=TRUE)
 >* x为随机森林模型
@@ -104,3 +104,89 @@ data(iris)
 iris_rf<-randomForest(Species~.,data = iris,proximity=T)
 hist(treesize(iris_rf))
 ```
+
+5.randomForest()函数
+
+```r
+randomForest(formula, data=NULL, ..., subset, na.action=na.fail)
+randomForest(x, y=NULL,  xtest=NULL, ytest=NULL, ntree=500,
+             mtry=if (!is.null(y) && !is.factor(y))
+             max(floor(ncol(x)/3), 1) else floor(sqrt(ncol(x))),
+             replace=TRUE, classwt=NULL, cutoff, strata,
+             sampsize = if (replace) nrow(x) else ceiling(.632*nrow(x)),
+             nodesize = if (!is.null(y) && !is.factor(y)) 5 else 1,
+             maxnodes = NULL,
+             importance=FALSE, localImp=FALSE, nPerm=1,
+             proximity, oob.prox=proximity,
+             norm.votes=TRUE, do.trace=FALSE,
+             keep.forest=!is.null(y) && is.null(xtest), corr.bias=FALSE,
+             keep.inbag=FALSE, ...)
+```
+>* formula代表函数模型的形式
+>* data代表的是在模型中包含的有变量的一组可选格式数据。
+>* subset主要用于抽取样本数据的部分样本作为训练集，该参数所使用的数据格式为一向量，向量中的每个数代表所需要抽取样本的行数。
+>* na.action主要用于设置构建模型过程中遇到数据中的缺失值时的处理方式。该参数的默认值为na.fail，即不能出现缺失值。该参数还可以取值na.omit，即忽略有缺失值的样本。
+>* x为一个矩阵或者一个格式化数据集。该参数就是在建立随机森林模型中所需要的自变量数据。
+>* y是建立随机森林模型中的响应变量。如果y是一个字符向量，则所构建的模型为判别模型；如果y是一个数量向量，则所构建的模型为回归模型；如果不设定y的取值，则所构建的模型为一个无监督模型。
+>* xtest是一个格式数据或者矩阵。该参数所代表的是用来进行预测的测试集的预测指标。
+>* ytest是参数xtest决定的测试集的真实分布情况。
+>* ntree指代森林中树的数目。在这里需要强调的是，该参数的值不宜偏小，这从直观上解释就是如果树太少那就不是森林了。对于该参数的决定存在一个原则，即尽量使每一个样本都至少能进行几次预测。通常，该参数最好设定为500或者1000。但这也不是绝对的，还要根据具体情况加以判断。
+
+对于大型数据集来说，尤其是那些拥有大量变量的数据集的时候，调用函数使用公式接口是不建议的，即采用函数的第一类输入格式是不建议的，因为这样将会导致在处理公式时花费大量的时间。
+
+###可视化分析###
+```r
+data(airquality)
+set.seed(131)
+head(airquality)
+ozone.rf<-randomForest(Ozone~.,data=airquality,mtry = 3,importance =T,na.action=na.omit)
+plot(ozone.rf)
+```
+由图可以看出，该模型中的决策树数量在100以内，模型误差会出现较大的波动，当决策树数量大于100以后，模型误差趋于稳定，但仍有少许变化。  
+通过观察发现，该模型误差最小值并非出现在决策树数量为500的时候，而是出现在决策树数量为210左右。所以我们猜测模型中的最优决策树数量为210.
+
+##应用案例##
+
+```r
+wine<-read.csv("winequality-white.csv",sep = ";")
+summary(wine)
+hist(wine$quality)
+```
+数据集中的quality为结果变量，该变量总共为11个等级，从0到11逐渐代表了白酒品质的提高，但是在本数据集中仅仅包含了3到9这7个等级。  
+本数据集采集了白酒品质的11项基本特征，分别为：非挥发性酸、挥发性酸、柠檬酸、剩余糖分、氯化物、游离二氧化硫、总二氧化硫、密度、酸性、硫酸盐、酒精度。
+
+###1数据处理###
+如果直接用白酒品质进行模型构建，则建立的随机森林模型为回归模型。函数将会默认结果变量为连续变量，通过计算各个决策树的平均结果得出最后的预测结果，并且相应的预测结果为数量型变量。  
+本文主要介绍随机森林判别模型，所以需要对数据集进行处理。将白酒品质分为三个等级。
+```r
+wine$quality.factor[which(wine$quality<6)]<-"bad"
+wine$quality.factor[which(wine$quality>6)]<-"good"
+wine$quality.factor[which(wine$quality==6)]<-"mid"
+wine$quality.factor<-factor(wine$quality.factor)
+wine$quality<-NULL
+table(wine$quality.factor)
+```
+
+###2建立模型###
+
+```r
+#使用第一种格式建立模型
+set.seed(71)
+samp<-sample(1:nrow(wine),3000) #抽取3000个作为训练集
+set.seed(111)
+wine.rf<-randomForest(quality.factor~.,data=wine,importance=T,proximity = T,ntree = 500,subset=samp)
+
+#使用第二种格式建立模型
+x<-subset(wine,select = -quality.factor)  #提取除了quality.factor之外的数据列作为自变量
+y<-wine$quality.factor
+set.seed(71)
+samp<-sample(1:nrow(wine),3000) #抽取3000个作为训练集
+xr<-x[samp,]
+yr<-y[samp]
+set.seed(111)
+win.rf<-randomForest(xr,yr,importance = T,proximity = T,ntree=500)
+```
+
+每次进行模型构建之前设置相应的随机数生成器初始值，这是为了保证在每次构建随机森林所使用的随机抽样样本是相同的，这也保证了每次建立的随机森林模型是一样的。还有一个问题需要强调，subset参数在第一种格式中是有效的，在第二种使用格式中却是无效的。
+
+###3结果分析###
