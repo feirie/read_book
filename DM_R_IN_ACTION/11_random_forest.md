@@ -131,6 +131,14 @@ randomForest(x, y=NULL,  xtest=NULL, ytest=NULL, ntree=500,
 >* xtest是一个格式数据或者矩阵。该参数所代表的是用来进行预测的测试集的预测指标。
 >* ytest是参数xtest决定的测试集的真实分布情况。
 >* ntree指代森林中树的数目。在这里需要强调的是，该参数的值不宜偏小，这从直观上解释就是如果树太少那就不是森林了。对于该参数的决定存在一个原则，即尽量使每一个样本都至少能进行几次预测。通常，该参数最好设定为500或者1000。但这也不是绝对的，还要根据具体情况加以判断。
+>* mtry用来决定在随机森林中决策树的每次分支时所选择的变量个数。在模型构建过程中一定得通过逐次计算来挑选最优的m值。该参数的默认值在判别模型中为变量个数的二次方根，在回归模型中则为变量个数的1/3。
+>* replace用来决定随机抽样的方式的。为True时，说明随机抽样是采取了有放回的随机抽样，则抽取的训练集中会出现重复样本；当为False时，则采取了无放回的随机抽样，在抽取的训练集中不会出现重复样本。
+>* strata是一个因子变量，用于决定分层抽样。
+>* sampsize用来决定抽样的规模的。该参数通常与参数strata联合使用，我们可以直观地将参数strata理解万岁参数sampsize的名称，即参数strata决定抽取的类别，而参数sampsize决定该类别应该抽取的样本数量。
+>* nodesize用来决定随机森林中决策树的最少节点数的。该参数的默认值在判别模型中为1，在回归模型中为5.
+>* maxnodes用来决定随机森林中决策树的最大节点数的。如果不设定，则决策树节点数将会尽可能地最大化。然而如果设定的最大节点数大于了决策树的最大可能节点，系统将会出现警告。
+>* importance用来决定是否计算每个变量在模型中的重要性。配合importance()函数使用。
+>* proximity用来决定是否计算模型的临近矩阵的。配合MDSplot()函数使用。
 
 对于大型数据集来说，尤其是那些拥有大量变量的数据集的时候，调用函数使用公式接口是不建议的，即采用函数的第一类输入格式是不建议的，因为这样将会导致在处理公式时花费大量的时间。
 
@@ -159,6 +167,7 @@ hist(wine$quality)
 如果直接用白酒品质进行模型构建，则建立的随机森林模型为回归模型。函数将会默认结果变量为连续变量，通过计算各个决策树的平均结果得出最后的预测结果，并且相应的预测结果为数量型变量。  
 本文主要介绍随机森林判别模型，所以需要对数据集进行处理。将白酒品质分为三个等级。
 ```r
+wine$quality.factor<-NA
 wine$quality.factor[which(wine$quality<6)]<-"bad"
 wine$quality.factor[which(wine$quality>6)]<-"good"
 wine$quality.factor[which(wine$quality==6)]<-"mid"
@@ -184,9 +193,55 @@ samp<-sample(1:nrow(wine),3000) #抽取3000个作为训练集
 xr<-x[samp,]
 yr<-y[samp]
 set.seed(111)
-win.rf<-randomForest(xr,yr,importance = T,proximity = T,ntree=500)
+wine.rf<-randomForest(xr,yr,importance = T,proximity = T,ntree=500)
 ```
 
 每次进行模型构建之前设置相应的随机数生成器初始值，这是为了保证在每次构建随机森林所使用的随机抽样样本是相同的，这也保证了每次建立的随机森林模型是一样的。还有一个问题需要强调，subset参数在第一种格式中是有效的，在第二种使用格式中却是无效的。
 
 ###3结果分析###
+```r
+print(wine.rf)
+```
+>* 结果Call中展示了模型构建的相关参数设定。
+>* 结果Type中说明了所构建的模型的类别，从结果中我们得知模型为判别模型。
+>* 结果Number of trees展示了所构建的随机森林模型中包含了500棵决策树。
+>* 结果中No. of variables tried at each split还告知了每棵决策树节点处所选择的变量个数为3.
+>* 模型基于OOB样本集进行预测得到的结果正如结果中的Confusion matrix所示，且模型总的预测误差为29.87%。
+>* 结果中的Confusion matrix展示了最终模型的预测结果通训练集实际结果之间的差别情况。
+
+###4自变量的重要程度###
+```r
+importance(win.rf)
+```
+###5优化建模###
+```r
+n<-ncol(wine)-1 #自变量个数
+rate<-1  #设置模型误判率向量初始值
+for(i in 1:n){
+	set.seed(222);
+	model<-randomForest(quality.factor~.,data=wine,mtry=i,importance=T,ntree=1000)
+	rate[i]<-mean(model$err.rate) #计算基于OOB数据的模型误判率均值
+	print(model)
+}
+```
+从以上的输出结果中可以看到，当决策树节点所选变量数为2的时候，模型的误判率均值是最低的。
+
+```r
+set.seed(222)
+model<-randomForest(quality.factor~.,data=wine,mtry=2,importance=T,ntree=1000)
+plot(model,col=1:1)
+legend(800,0.215,"mid",cex=0.9,bty="n")
+legend(800,0.28,"bad",cex=0.9,bty="n")
+legend(800,0.37,"good",cex=0.9,bty="n")
+legend(800,0.245,"total",cex=0.9,bty="n")
+```
+从图可以看到，当决策树数量大概大于400之后，模型误差趋于稳定，所以可以将模型中的决策树数量大致确定为400左右，以此来达到最优模型。
+
+```r
+set.seed(222)
+model<-randomForest(quality.factor~.,data=wine,mtry=2,importance=T,ntree=400,proximity=T)
+print(model)
+hist(treesize(model))
+MDSplot(model,wine$quality.factor,palette = rep(1,3),pch = as.numeric(wine$quality.factor))
+```
+MDSplot图形中说明了数据集中的三个类别，三个类别均出现交叉，并且在部分区域，三个类别的交叉情况较为严重，这同时也解释了模型预测精度较低的原因。
