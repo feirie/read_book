@@ -85,6 +85,14 @@ countries_rowname<-as.character(countries$country)
 for(i in 1:68) row.names(countries)[i]<-countries_rowname[i]
 
 plot(countries$birth,countries$death)
+#关注的国家
+attention_countries<-c("CHINA","TAIWAN","HONG KONG","INDIA","UNITED STATES","JAPAN")
+attention_countries<-c(attention_countries,as.character(countries[which.max(countries$birth),1]))
+for(i in 1:length(attention_countries)){
+	c<-which(countries$country==attention_countries[i])
+	points(countries[c,-1],pch=16) 
+	legend(countries$birth[c],countries$death[c],as.character(countries[c,1]),bty="n",xjust=0.5,yjust=1,cex=0.8)
+}
 ```
 
 ##3应用案例##
@@ -94,5 +102,21 @@ set.seed(123)
 fit_km1<-kmeans(countries[,-1],centers = 3)
 print(fit_km1)
 #3个类别所含样本数，分布为15，17和36；以及各类别中心点坐标(Cluster means),即第1类可以认为是中等出生率、低死亡率，第2类为低出生率、低死亡率，而第3类为高出生率、高死亡率。从聚类向量(Clustering vector)一栏看到中国大陆及港台都归属于第1类，这之后，软件给出了各类别的组内平方和，1至3类依次升高，即第1类样本点间的差异性最小，第三类最大，且组间平方和占总平方和的81%，该值可用于与类别数取不同值时的聚类结果进行比较，从而找出最优聚类结果，该百分数越大表明组内差距越小、组间差距越大，即聚类效果最好；最后，还可根据获得结果(Available components)部分来分别获取聚类的各项输出结果。
-组间平方和+组内平方和=总平方和
+#组间平方和+组内平方和=总平方和
+#绘制聚类结果
+plot(countries[,-1],pch=(fit_km1$cluster-1))  #将countries数据集中聚为3类的样本点以3种不同形状表示
+points(fit_km1$centers,pch=8) #将3类别的中心点以星号标示
+legend(fit_km1$centers[1,1],fit_km1$centers[1,2],legend = "Center_1",bty = "n",xjust = 1,yjust = 0,cex = 0.8) 
+legend(fit_km1$centers[2,1],fit_km1$centers[2,2],legend = "Center_2",bty = "n",xjust = 1,yjust = 0,cex = 0.8) 
+legend(fit_km1$centers[3,1],fit_km1$centers[3,2],legend = "Center_3",bty = "n",xjust = 1,yjust = 0,cex = 0.8) 
+#从图中可以看到，中国大陆及港台聚于第1类，即中等出生率、低死亡率，美国、日本和印度都属于低出生率、低死亡率的第2类。
+
+#接下来，我们来调节类别参数center的取值，并通过前面所讨论的组间平方和占总平方和的百分比值(以下简称为“聚类优度”)，来比较选择出最优类别数。
+result<-rep(0,67)
+for(k in 1:67){
+	fit_km<-kmeans(countries[,-1],centers = k)
+	result[k]<-fit_km$betweenss/fit_km$totss
+}
+round(result,2) #在类别约小于10时，随着类别数的增加而聚类效果越来越好(result值从0.72快速提高至0.97左右)；但当类别数超过10之后再增加时，聚类效果基本不再提高(result值在0.97至1.00之间浮动)。这是符合我们理解的，当类别数基本接近样本点数，即接近于形成每个样本自成一类的情形时，聚类效果肯定是最好的，但却是无意义的。
 ```
+
