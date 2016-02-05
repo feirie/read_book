@@ -118,5 +118,34 @@ for(k in 1:67){
 	result[k]<-fit_km$betweenss/fit_km$totss
 }
 round(result,2) #在类别约小于10时，随着类别数的增加而聚类效果越来越好(result值从0.72快速提高至0.97左右)；但当类别数超过10之后再增加时，聚类效果基本不再提高(result值在0.97至1.00之间浮动)。这是符合我们理解的，当类别数基本接近样本点数，即接近于形成每个样本自成一类的情形时，聚类效果肯定是最好的，但却是无意义的。
-```
 
+plot(1:67,result,type="b",main="choosing theoptimal number of cluster",xlab="number of cluster:1 to 67",ylab="betweenss/totss") #对result简单制图
+points(10,result[10],pch=16) #将类别数为10的点用实心圆标出
+legend(10,result[10],paste("(10,",sprintf("%.1f%%",result[10]*100),")",sep=""),bty="n",xjust=0.3,cex=0.8)
+#实际上，最优类别数可以认为是10，也可以认为是9、11、12等，并无太大差别，因此，此处我们不妨取k=10为最优类别数。在实际选择过程中，如果并非要求极高的聚类效果，取k=5或6即可，较小的类别数在后续的数据分析过程中往往是更为方便、有效的。
+
+fit_km2<-kmeans(countries[,-1],centers = 10)
+cluster_CHINA<-fit_km2$cluster[which(countries$country=="CHINA")]
+which(fit_km2$cluster==cluster_CHINA)  #选出与中国大陆同类别的地区
+```
+###K-中心点聚类###
+```r
+library(cluster)
+fit_pam<-pam(countries[,-1],3)
+print(fit_pam)
+#输出结果，medoids致命了聚类完成时各类别的中心点分别是哪几个样本点，取值为多少。“Objective function”目标方程组给出了build和swap俩个过程中目标方程的值。其中，build过程用于在未指定初始中心点情况下，对于最优初始中心点的寻找；而swap过程则用于在初始中心点的基础上，对目标方程寻找使其能达到局部最优的类别划分状态，即其他划分方式都会使目标方程的取值低于该值。
+```
+###系谱聚类###
+```r
+fit_hc<-hclust(dist(countries[,-1])) #进行系谱聚类
+print(fit_hc)
+plot(fit_hc) #对聚类结果做系谱图
+#图中与中国在出生率和死亡率方面最为相近的国家为智利(CHILE)和阿尔及利亚(ALGERIA)。在树的左侧以高度指标(Height)衡量树形图的高度，这一指标在下面将要提到的剪枝过程中将会用到。
+group_k3<-cutree(fit_hc,k=3)
+table(group_k3)
+group_h18<-cutree(fit_hc,h=18) #利用剪枝函数中的参数h控制输出height=18时的系谱聚类结果
+table(group_h18)
+rect.hclust(fit_hc,k=4,border = "light gray")
+rect.hclust(fit_hc,k=3,border = "dark gray")
+rect.hclust(fit_hc,k=7,which=c(2,6),border = "dark gray")
+```
