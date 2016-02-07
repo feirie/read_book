@@ -74,6 +74,33 @@ pam(x, k, diss = inherits(x, "dist"), metric = "euclidean",
 >* keep.data选择是否在聚类结果中保留数据集
 
 ####3.dbscan函数####
+ dbscan(data, eps, MinPts = 5, scale = FALSE, method = c("hybrid", "raw","dist"), seeds = TRUE, showplot = FALSE, countmode = NULL)
+>* data为待聚类数据集或距离矩阵
+>* eps为考核每一个样本点是否满足密度要求时，所划定考察邻域的半径
+>* MinPts为密度阀值，当考核点eps邻域内的样本点数大于等于MinPts时，该点才被认为是核心对象，否则为边缘点
+>* scale用于选择是否在聚类前先对数据集进行标准化
+>* method参数用于选择如何看待data，"hybrid"表示data为距离矩阵，"raw"表示data为原始数据集,且不计算其距离矩阵,"dist"也将data视为原始数据集，但计算局部聚类矩阵
+>* showplot用于选择是否输出聚类结果示意图，取值为0、1、2，分别表示不绘图、每次迭代都绘图、仅将子迭代过程绘图
+
+###4.hclust、cutree及rect.hclust函数###
+hclust(d, method = "complete", members = NULL)
+>* d为待处理数据集样本间的距离矩阵，可用dist()函数计算得到
+>* method参数用于选择聚类的具体算法，可供选择的有ward、single及complete等7种，默认选择complete方法
+>* members用于指出每个待聚类样本点/簇是由几个单样本构成，如共有5个待聚类样本点/簇，当我们设置members=rep(2,5)则表明每个样本点/簇分别是有2个单样本聚类的结果，该参数默认为NULL，表明每个样本点本身即为单样本   
+
+cutree()函数可以对hclust()函数的聚类结果进行剪枝，即选择输出指定类别数的系谱聚类结果。格式为：    
+cutree(tree, k = NULL, h = NULL)
+>* tree为hclust的聚类结果
+
+rect.hclust()可以在plot形成的系谱聚类图中将指定类别中的样本分支用方框表示出来，十分有助于直观分析聚类结果。   
+rect.hclust(tree, k = NULL, which = NULL, x = NULL, h = NULL, border = 2, cluster = NULL)
+###5.Mclust、mclustBIC、mclust2Dplot###
+Mclust(data, G = NULL, modelNames = NULL, prior = NULL, control = emControl(),initialization = NULL, warn = mclust.options("warn"), ...)
+>* Mclust函数为进行EM聚类的核心函数
+>* data为待处理数据集
+>* G为预设类别数，默认值为1至9，即由软件根据BIC在1至9中选择最优值
+>* modelNames用于设定模型类别，该参数和G一样也可由函数自动选择最优值
+mclustBIC函数的参数设置与Mclust基本相同，用于获取数据集所对应的参数化高斯混合模型的BIC值，而BIC值的作用即是评价模型的优劣，BIC值越高模型越优。mclust2Dplot可根据EM算法所生成参数对二维数据制图。而densityMclust函数利用Mclust的聚类结果对数据集中的每个样本点进行密度估计。    
 
 ###数据集###
 ```r
@@ -149,3 +176,63 @@ rect.hclust(fit_hc,k=4,border = "light gray")
 rect.hclust(fit_hc,k=3,border = "dark gray")
 rect.hclust(fit_hc,k=7,which=c(2,6),border = "dark gray")
 ```
+
+###密度聚类###
+
+```r
+library("fpc")
+ds1<-dbscan(countries[,-1],eps=1,MinPts = 5)
+ds2<-dbscan(countries[,-1],eps=4,MinPts = 5)
+ds3<-dbscan(countries[,-1],eps=4,MinPts = 2)
+ds4<-dbscan(countries[,-1],eps=8,MinPts = 2)
+par(mfcol=c(2,2))
+plot(ds1,countries[,-1],main="1:MinPts=5 eps=1")
+plot(ds2,countries[,-1],main="2:MinPts=5 eps=4")
+plot(ds3,countries[,-1],main="3:MinPts=2 eps=4")
+plot(ds4,countries[,-1],main="4:MinPts=2 eps=8")
+```
+ds1解释：在MinPts=5，eps=1时，样本点被聚类为两类，其中第1类中含有6个样本，即以上输出结果中标号为1所对应的列，seed所对应的行，也就是我们在理论部分所说的相互密度可达的核心对象所构成的类别，即为类别A；另有3个样本点，即border所对应的行中的数字3，也就是与类别A密度相连的边缘点所构成的类别，即为B；另外，标号0所对应列为噪声点的个数，此处为59。   
+我们可以看出，在半径为1，阀值为5时，DBSCAN算法将绝大多数样本都判定位噪声点，仅9个密度极为相近(在半径为1的圆内至少含有5个其他样本)的样本点被判定为有效聚类。
+ds2解释：我们尝试将半径扩大，阀值不作改变，如此一来会有较多的样本被有效分类。从输出结果中，可以看到仅有5个样本被判定为噪声点，而剩余样本都被归为相应的类别簇中。具体的，样本点被聚于4个类别中，所含样本点数分别为7、1、18、37。    
+ds3解释：这一次，我们尝试不改变半径，而将阀值减小。从输出结果中，可以看到更多的样本被归入相互密度可达样本的类别，即seed行中；而边缘点总数仅为3，所有样本被聚为3类，分别含有25、3、38个样本点。    
+ds4解释：保持阀值不变为2，把半径翻倍为8，由于核心对象、密度可达等概念的判定条件在很大程度上被放松，可想而知，会有大量的样本点被归为同一类中。由输出结果，在总共68个样本中，其中66个被聚为1类，仅有2个样本点由于偏离主体样本太多而被单独聚为一类。   
+由以上过程，我们基本可以看出DBSCAN算法参数取值的规律：半径参数与阀值参数的取值差距越大（如情形1与4），所得类别总数越小（都为2类别）；具体的，半径参数相对于阀值参数较小时（如情形1与2），越多的样本被判定为噪声点（分别为59和5）或边缘点（分别为63和13）。   
+
+```r
+#我们考虑查看大多数样本间的距离是在怎样一个范围，再以此距离作为半径参数的取值，这样则可以很大程度上保证大部分样本被聚于类别内，而不被认为是噪声点。
+d<-dist(countries[,-1])
+max(d);min(d)
+library(ggplot2)  #为了使用数据分段函数cut_interval()
+interval<-cut_interval(d,30)
+#对各样本间的距离进行分段处理，结合最大最小值相差50左右，取居中段数为30
+table(interval)
+which.max(table(interval))  #发现样本点的距离大多在3.51至5.16之间，因此我们考虑半径参数eps的取值为3、4、5.如下，我们对半径去3、4、5，密度阀值为1至10，作双层循环结果如下
+for(i in 3:5){
+	for(j in 1:10){
+		ds<-dbscan(countries[,-1],eps=i,MinPts = j)
+		print(ds)
+	}
+}
+```
+根据如上汇总结果来选取合适的参数值。一般来说，类别数应至少高于2类，否则进行聚类的意义不大；并且噪声点不应太多，若太多则说明参数条件过紧，参与有效聚类的样本数太少。
+###期望最大化聚类###
+```r
+library(mclust)
+fit_EM<-Mclust(countries[,-1])
+summary(fit_EM) #从输出结果可以看到，根据BIC选择出的最佳模型类型为EVI，最优类别为4，且各类分别含有11、2、36、19个样本。
+summary(fit_EM,parameters = T) #获取EM聚类结果的细节信息
+plot(fit_EM)#当对Mclust的聚类结果直接作图，可以得到4张连续图形，分别为BIC图、分类图(Classification)、概率图(Classification Uncertainty)以及密度图(log Density Countour Plot)。    
+#概率图不仅将各类别样本的主要分布区域用椭圆圈出，并标出了类别中心点，且以样本点图形的大小，来显示该样本归属于相应类别的概率大小。 
+
+countries_BIC<-mclustBIC(countries[,-1])
+countries_BICsum<-summary(countries_BIC,data=countries[,-1])
+countries_BICsum  #如上我们得到BIC值最高时的模型情况及BIC取值，分别为4分类的EVI模型、3分类的EEI模型以及3分类的EII模型。
+
+mclust2Dplot(countries[,-1],classification = countries_BICsum$classification,parameters = countries_BICsum$parameters,col="black")
+
+countries_dens<-densityMclust(countries[,-1]) #对每一个样本进行密度估计
+plot(countries_dens,countries[,-1],col="grey",nlevels=55) #做2维密度图
+plot(countries_dens,type="persp",col=grey(0.8)) #做3维密度图
+```
+  
+
