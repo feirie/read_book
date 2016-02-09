@@ -59,17 +59,20 @@ lda(x, grouping, ..., subset, na.action)
 >* grouping指明每个观测样本所属类别
 >* prior可设置各类别的先验概率，在无设置情况下，R默认取训练集中各类别样本的比例
 >* tol用于保证判别效果，可通过设置筛选变量，默认取0.0001
->* na.action用于选择对于缺失值的处理，默认情况下，若有缺失值，则该函数无法运行，当更改设置为na.omit时，则自动删除在用于判别的特征变量中含有缺失值的观测样本。    
+>* na.action用于选择对于缺失值的处理，默认情况下，若有缺失值，则该函数无法运行，当更改设置为na.omit时，则自动删除在用于判别的特征变量中含有缺失值的观测样本。 
+   
 ####2.qda函数####
 qda(x, grouping, prior = proportions,method, CV = FALSE, nu, ...)
 qda(formula, data, ..., subset, na.action)
 qda(x, grouping, ..., subset, na.action)    
+
 ####3.NaiveBayes函数####
 NaiveBayes(formula, data, ..., subset, na.action = na.pass)
 NaiveBayes(x, grouping, prior, usekernel = FALSE, fL = 0, ...)
 >* na.action为na.pass时，表示不将缺失值纳入计算，并不会导致函数无法运行
 >* usekernel参数用于选择函数计算过程中，密度估计所采用的算法，默认时取FALSE，表示使用标准密度估计，也可以修改为TRUE，选择使用核密度估计法
 >* fL用于设置进行拉普拉斯修正(Laplace Correction)的参数值，默认取0，即不进行修正，该修正过程在数据量较小的情况下十分必要。这是因为朴素贝叶斯方法的一个致命缺点在于对稀疏数据问题过于敏感，它以各特征变量条件独立为前提，因此使用相乘的方式来计算所需结果，若其中任一项由于数据集中不存在满足条件的样本，使得该项等于0，都会导致整体乘积结果为0，得到无效判别结果。因此，为了解决这个问题，拉普拉斯修正就可以给未出现的特征值，赋予一个“小”的值而不是0    
+
 ####4.knn函数####
 knn(train, test, cl, k = 1, l = 0, prob = FALSE, use.all = TRUE)
 >* train和test参数分别代表训练集和测试集
