@@ -82,6 +82,9 @@ knn(train, test, cl, k = 1, l = 0, prob = FALSE, use.all = TRUE)
 >* prob控制输出“胜出”类别的得票比例，比如k=10时，若其中有8个属于类别1，2个属于类别2，类别1则为“胜出”类别，且prob取TRUE时，可输出该待判样本所对应的prob值为8/10=0.8
 >* use.all用于选择再出现“结点”时的处理方式，所谓结点即指距离待判样本第K近的已知样本不止一个，比如，已知样本i和j与待判样本n的距离相等，都刚好第K近，那么当use.all默认取TRUE时就将i和j都纳入判别过程，这时n的K近邻就有K+1个样本，若use.all取FALSE时，则R软件会在i和j中随机选出一个以保证K近邻中刚好有K个样本
  
+####5.kknn函数####
+kknn(formula = formula(train), train, test, na.action = na.omit(), k = 7, distance = 2, kernel = "optimal", ykernel = NULL, scale=TRUE,contrasts = c('unordered' = "contr.dummy", ordered = "contr.ordinal"))    
+>* distance参数用于设定选择计算样本间距离的具体方法，通过设定明氏距离(Minkowski Distance)中的参数来实现，取1或2时的明氏距离是最为常用的，参数取2时即为欧式距离，取1时为曼哈顿距离，当取无穷时的极限情况下，可以得到切比雪夫距离。
 ###数据集###
 kknn软件包中的miete数据集，该数据集记录了1994年慕尼黑的住房租金标准中的一些有趣变量，比如房子的面积、是否有浴室等，这些都影响并决定着租金的高低。
 ####数据概况####    
@@ -226,6 +229,7 @@ nmkat共含有5个类等级别，每一个类的样本量都为200多个，分�
 ####数据预处理####
 ```r
 library(sampling)
+set.seed(1234)
 n<-round(2/3*nrow(miete)/5) #按照训练集占数据总量2/3的比例，计算每一等级中应抽取的样本量
 sub_train<-strata(miete,stratanames = "nmkat",size = rep(n,5),method = "srswor")  #以nmkat变量的5个等级划分层次，进行分层抽样
 head(sub_train)
@@ -303,3 +307,118 @@ error_bayes1<-sum(as.numeric(pre_bayes1$class)!=as.numeric(data_test$nmkat))/nro
 ```
 预测错误率约为50%，可以说判别效果不佳，基本等于纯猜测所得到的正确程度。这很可能是由于该数据集变量不符合朴素贝叶斯判别执行的前提条件--各变量条件独立，即参与建立判别规则的这些变量是有着较显著的相关性的，这就很大程度上影响了预测效果的好坏。    
 而在实际数据中，变量间往往都多多少少有着相互关联性，因此，同样基于贝叶斯原理的贝叶斯网络（又称贝叶斯信念网络或信念网络）是贝叶斯判别中更高级、应用范围更广的一种算法。它放宽了变量无关的这一假设，将贝叶斯原理和图论想结合，建立起一种基于概率推理的数学模型，对于解决复杂的不确定性和关联性问题有很强的优势。
+
+###K最近邻###
+K最近邻和有权重K最近邻算法在R中的实现，与前面几种有着明显不同，其核心函数knn与kknn判别规则的“建立”和“预测”这两个步骤于一体，即不需在规则建立后再使用predict函数来进行预测。
+```r
+library(class)
+fit_pre_knn<-knn(data_train[,-12],data_test[,-12],cl=data_train[,12])
+table(data_test$nmkat,fit_pre_knn)
+error_knn<-sum(as.numeric(fit_pre_knn)!=as.numeric(data_test$nmkat))/nrow(data_test) #计算错误率为0.298，判别效果较前几种算法都要好。这与数据集的特点密不可分，在其他的数据中也可能是另一种算法表现更优，在实际中需注意针对不同数据集选取使用不同的挖掘算法。
+error_knn<-rep(0,20)
+for(i in 1:20){
+	fit_pre_knn<-knn(data_train[,-12],data_test[,-12],cl=data_train[,12],k=i)
+	error_knn[i]<-sum(as.numeric(fit_pre_knn)!=as.numeric(data_test$nmkat))/nrow(data_test)
+}
+error_knn
+plot(error_knn,type="l",xlab="K")#由图中可以看到，当K取3时预测效果最佳，此时错误率为0.284
+```
+但K近邻算法也有其缺陷，当样本不平衡，即某些类的样本容量很大，而其他类样本容量很小时，有可能导致当输入一个新样本时，该样本的K个最近邻样本中大容量类别的样本占多数，在这种情况下就可以使用有权重的K最近邻算法来改进。
+###有权重的K最近邻###
+```r
+fit_pre_kknn<-kknn(nmkat~.,data_train,data_test[,-12],k=5)
+summary(fit_pre_kknn)
+fit<-fitted(fit_pre_kknn)
+table(data_test$nmkat,fit)
+error_kknn<-sum(as.numeric(fit)!=as.numeric(data_test$nmkat))/nrow(data_test)
+```
+
+##推荐系统综合实例##
+MovieLens是一个推荐系统和虚拟社区网站，它的主要功能是运用协同过滤技术，以及所收集到的用户对电影的喜好信息，来向用户推荐电影。具体来说，MovieLens可根据用户对一部分电影的评分，预测出该用户对其他电影的评分情况。当一个新用户进入MovieLens，他需要对15部电影评分，评分范围为1~5分，评分间隔为0.5分。这样一来，当用户查看某部电影时，MovieLens的推荐系统就可以根据之前获取的该用户电影偏好信息，即以往的评分来预测其对该部电影的评分。   
+###kNN与推荐###
+首先，kNN的基本思想简单来说就是，要评价一个未知的东西U，就去找K个与U相似的已知的东西，看看这些已知的东西大多数是属于什么水平、什么程度、什么类别，据此就可以估计出U的水平、程度、类别。就像我们平常所说的，要看出一个人的性格，就去看看他周围朋友们都是怎样的一些人，这与kNN的原理是一个道理。    
+而运用于推荐系统中，我们以电影为例，假如我们现在想要预测一位注册名为A的用户对电影M的评价。根据kNN的思想，我们就可以找出K个与A对其他电影给予相似评分，且对电影M已经进行评分的用户，然后再用这K个用户对M的评分来预测A对M的评分。这种找相似用户的方法被称之为基于用户的kNN(User-based kNN)。    
+另外，我们也可以先找出K个与电影相似的，并且A评价过的电影，然后再用这K部电影的评分来预测A对M的评分。这种找相似物品的方法叫做基于项目的kNN(Item-based kNN)。
+###MovieLens数据集说明###
+http://www.grouplens.org/node/73    
+u.data:含有943位用户对1682部电影总计10万条评分，且每位用户至少记录了其对20部电影的评分。格式上，每条数据按照用户ID(userid)、电影ID(itemid)、评分(rating)以及时间戳(timestamp)4个变量列示，样本排列是无序的，其中我们将主要用到前三个变量信息。   
+u.item:记录每部电影的信息，包括电影ID(itemid)、电影名称(movie title)、上映时间(release date)、视频发布时间(video release date)、网络电影资料库的网址(IMDb URL)，以及是否为某类型电影的一系列二分变量，如是否为动作片(Action)、冒险片(Adventure)、动画片(Animation)等。这是探究各电影间相似性的重要数据资料。   
+u.user:记录每位用户的基本信息，包括用户ID(user id)、年龄(age)、性别(gender)、职业(occupation)以及邮编(zip code)。这是探究各用户间相似性的重要信息来源。
+###综合运用###
+####1.整体思路####
+User-based kNN算法    
+目的：预测某位用户(其用户ID为U<sub>0</sub>)对某部电影(其电影ID为M<sub>0</sub>)的评分。    
+步骤：1：选择用户U<sub>0</sub>已经给出评分的若干部电影，假设选择n部，并获取其电影ID，记为M<sub>1</sub>-M<sub>n</sub>    
+2：再找出对电影M<sub>0</sub>已经给出评分的用户，假设有m位符合的用户，并获取其用户ID，记为U<sub>1</sub>-U<sub>m</sub>    
+3:构造训练集和测试集
+<table>
+	<tr>
+		<td rowspan=2 colspan=2></td>
+		<td>待评分电影</td>
+		<td colspan=3>已评分电影</td>
+	</tr>
+	<tr>
+		<td>M<sub>0</sub></td>
+		<td>M<sub>1</sub></td>
+		<td>...</td>
+		<td>M<sub>n</sub></td>
+	</tr>
+	<tr>
+		<td>待评分用户</td>
+		<td>U<sub>0</sub></td>
+		<td>测试集(data_test_y)</td>
+		<td colspan=3>测试集(data_test_y)</td>
+	</tr>
+	<tr>
+		<td rowspan=3>已知评分用户</td>
+		<td>U<sub>1</sub></td>
+		<td rowspan=3>训练集(data_train_y)</td>
+		<td rowspan=3 colspan=3>训练集(data_train_x)</td>
+	</tr>
+	<tr>
+		<td>...</td>
+	</tr>
+	<tr>
+		<td>U<sub>n</sub></td>
+	</tr>
+</table>
+4:将相应的训练集与测试集按顺序放入knn函数，即可预测出用户U<sub>0</sub>对电影M<sub>0</sub>的评分值。
+####2.数据集信息####
+```r
+data<-read.table("u.data")
+data<-data[,-4]  #删除第4列，时间戳变量
+names(data)<-c("userid","itemid","rating") #命名各变量名
+dim(data)
+```
+####3.MovieLens_KNN函数的输入输出####
+```r
+MovieLens_KNN=function(Userid,Itemid,n,K){
+	sub<-which(data$userid==Userid)  #获取待预测用户U<sub>0</sub>在数据集中各条信息所在的行标签，存于sub
+	if(length(sub)>=n) sub_n<-sample(sub,n)
+	if(length(sub)<n) sub_n<-sample(sub,length(sub))
+	#获取随机抽出的n个U<sub>0</sub>已评分电影M<sub>1</sub>-M<sub>n</sub>的行标签，存于sub_n
+	known_itemid<-data$itemid[sub_n]  #获取U<sub>0</sub>已评分电影M<sub>1</sub>-M<sub>n</sub>的电影ID
+	unknown_itemid<-Itemid #获取待预测电影M<sub>0</sub>的ID号
+	unknown_sub<-which(data$itemid==unknown_itemid)
+	user<-data$userid[unknown_sub[-1]]
+	data_all<-matrix(0,1+length(user),2+length(known_itemid))
+	data_all<-data.frame(data_all)
+	names(data_all)<-c("userid",paste("unkown_itemid_",Itemid),paste("itemid_",known_itemid,sep=""))
+	item<-c(unknown_itemid,known_itemid)
+	data_all$userid<-c(Userid,user)
+	for(i in 1:nrow(data_all)){
+		data_temp<-data[which(data$userid==data_all$userid[i]),]
+		for(j in 1:length(item)){
+			if(sum(as.numeric(data_temp$itemid==item[j]))!=0){
+				data_all[i,j+1]<-data_temp$rating[which(data_temp$itemid==item[j])]
+			}
+		}
+	}
+	data_test_x<-data_all[1,c(-1,-2)]
+	data_test_y<-data_all[1,2]
+	data_train_x<-data_all[-1,c(-1,-2)]
+	data_train_y<-data_all[-1,2]
+	fit<-knn(data_train_x,data_test_x,cl=data_train_y,k=K)
+	return list("data_all:"=data_all,"True Rating:"=data_test_y,"Predict Rating:"=fit,"User Id:"=Userid,"Item ID:"=Itemid)
+}
+```
