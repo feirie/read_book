@@ -140,3 +140,54 @@ table(iris$Species,pred1)
 table(iris$Species,pred2)
 ```
 人工神经网络模型的预测效果是该模型最重要最核心的作用，如果两个模型在预测能力上显示不出任何差异，那么我们讨论两个模型不同也就失去了意义，因为我们所追求的是模型的预测能力。
+
+###优化建模###
+确定出隐藏层最优节点的数目
+```r
+set.seed(71)
+wine<-wine[sample(1:nrow(wine),3000),]
+nrow.wine<-dim(wine)[1]
+set.seed(444)
+samp<-sample(1:nrow.wine,nrow.wine*0.7)
+wine[samp,1:11]<-scale01(wine[samp,]) #对训练集样本进行预处理
+wine[-samp,1:11]<-scale01(wine[-samp,]) #对测试集样本进行预处理
+r<-1/max(abs(wine[samp,1:11]))
+n<-length(samp)
+err1<-0
+err2<-0
+for(i in 1:17){
+	set.seed(111)
+	model<-nnet(quality.factor~.,data=wine,maxit=400,rang=r,size=i,subset=samp,decay=5e-4)
+	err1[i]<-sum(predict(model,wine[samp,1:11],type='class')!=wine[samp,12])/n
+	err2[i]<-sum(predict(model,wine[-samp,1:11],type='class')!=wine[-samp,12])/(nrow.wine-n)
+}
+plot(1:17,err1,'l',col=1,lty=1,ylab="模型误判率",xlab="隐藏层节点个数",ylim=c(min(min(err1),min(err2)),max(max(err1),max(err2))))
+lines(1:17,err2,col=1,lty=3)
+points(1:17,err1,col=1,pch="+")
+points(1:17,err2,col=1,pch="o")
+legend(1,0.53,"测试集误判率",bty="n",cex=1.5)
+legend(1,0.35,"训练集误判率",bty="n",cex=1.5)
+```
+由图示可以看出，训练集样本错误跟随隐藏层节点数的增加而下降，但是与此同时，测试集样本错误却未随着隐藏层节点的增加而下降，这种现象是由于模型中隐藏层节点数增加而引起的模型过度拟合导致的。模型针对测试集误判率大概在模型隐藏层节点数为3时取到最小点，所以我们将隐藏层节点数确定为3.  
+从前文中我们分析到，当神经网络模型训练周期过长的时候，建立出的人工神经网络模型将会记录下训练集中几乎全部信息，这将会产生过度拟合的问题。即该模型针对于训练集的时候会体现出非常优异的预测能力，但是由于该模型记录下训练集中的全部信息，即该模型也将训练集中许多特有信息记录下来，所以当模型用于其他样本集的时候，模型的预测能力将会大大下降，即模型的泛化能力非常弱。    
+在确定出最优隐藏层节点后，再确定出最优的迭代次数。
+```r
+err11<-0
+err12<-0
+for(i in 1:500){
+	set.seed(111)
+	model<-nnet(quality.factor~.,data=wine,maxit=i,rang=r,size=3,subset=samp,decay=5e-4)
+	err11[i]<-sum(predict(model,wine[samp,1:11],type='class')!=wine[samp,12])/n
+	err12[i]<-sum(predict(model,wine[-samp,1:11],type='class')!=wine[-samp,12])/(nrow.wine-n)
+}
+plot(1:length(err11),err11,'l',col=1,lty=1,ylab="模型误判率",xlab="训练周期",ylim=c(min(min(err11),min(err12)),max(max(err11),max(err12))))
+lines(1:length(err11),err12,col=1,lty=3)
+
+legend(250,0.47,"测试集误判率",bty="n",cex=1.5)
+legend(250,0.35,"训练集误判率",bty="n",cex=1.5)
+```
+图中，模型针对于训练集和测试集的误判率均同时随训练周期的增大而降低。在前文理论部分中，谈论到当模型训练周期过长时，模型应该会出现过度拟合的问题，即在训练周期达到一定程度时，测试集误差将会反向变化，训练集误差将会随着模型训练周期的增大而增大。   
+对于这个问题，当使用R软件进行模型构建时会经常遇到，但这并非说明理论出现了错误。对该问题进行进一步分析可以得知出现该问题存在两个原因。    
+首先，在R软件的nnet程序包中，函数在构建模型时将会设定一个条件值以避免函数进入死循环。即在默认情况下，当函数计算值变化为零时模型将会停止运转，所以很多时候模型将不会运行到过高的训练周期。   
+其次，由于训练集样本同测试集样本的相似度过高，所以训练集中的特征同样为测试集中的特征，所以即使在过度拟合的情况下，所构建的模型同样能很好地适用于与训练集相似度很高的数据集。   
+尽管该图有一定问题，但是仍然具有一定的参考价值。训练集误差随着训练周期的增大而不断减小；但是对于测试集，当训练周期达到一定程度后，模型的误判率将会趋于平稳，模型的误判率将不再下降。根据上面分析，决定将模型的训练周期确定为300。   
