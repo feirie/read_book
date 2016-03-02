@@ -84,4 +84,93 @@ correlation<-abs(correlation)
 (correlation<-correlation[,order(correlation,decreasing = T)])
 cor(cup98[,idx.num])
 pairs(cup98)
+
+#绘制数值变量的散布图，并基于目标变量设置点的颜色，下面使用函数jitter()添加少量的噪声数据，在存在大量重叠数据点的情况这种设置很有用。
+color<-ifelse(cup98$TARGET_D>0,"blue","black")
+pch<-ifelse(cup98$TARGET_D>0,"+",".")
+plot(jitter(cup98$AGE),jitter(cup98$HIT),pch=pch,col=color,cex=0.7,ylim=c(0,70),xlab="AGE",ylab="HIT")
+legend("topright",c("TARGET_D>0","TARGET_D=0"),col=c("blue","black"),pch=c("+","."))
+
+myChisqTest<-function(x){
+	t1<-table(cup98pos[,x],cup98pos$TARGET_D2)
+	plot(t1,main=x,las=1)
+	print(x)
+	print(chisq.test(t1))
+}
+
+#训练决策树
+#使用party包的函数ctree()创建一颗决策树
+#MinSplit控制一个节点中实例的最少数量以便进行分割
+#MinBusket设置一个叶子节点中实例的最小数量
+#MaxSurrogate表示替代分裂点的数量以便用于评估
+#MaxDepth控制决策树的深度
+nRec<-dim(cup98)[1]
+trainSize<-round(nRec*0.7)
+testSize<-nRec-trainSize
+MinSplit<-1000
+MinBucket<-400
+MaxSurrogate<-4
+MaxDepth<-10
+(strParameters<-paste(MinSplit,MinBucket,MaxSurrogate,MaxDepth,sep="-"))
+LoopNum<-10
+cost<-0.68
+varSet2 <- c("AGE", "AVGGIFT", "CARDGIFT", "CARDPM12",
+"CARDPROM", "CLUSTER2", "DOMAIN", "GENDER", "GEOCODE2", "HIT",
+"HOMEOWNR", "HPHONE_D", "INCOME", "LASTGIFT", "MAXRAMNT",
+"MDMAUD_F", "MDMAUD_R", "MINRAMNT", "NGIFTALL", "NUMPRM12",
+"PCOWNERS", "PEPSTRFL", "PETS", "RAMNTALL", "RECINHSE",
+"RFA_2A", "RFA_2F", "STATE", "TIMELAG")
+cup98<-cup98[,c("TARGET_D",varSet2)]
+library(party)
+
+pdf(paste("evaluation-tree-",strParmeters,".pdf",spe=""),width=12,height=9,paper="a4r",pointsize = 6)
+cat(date(),"\n")
+cat(" trainSize=", trainSize, ", testSize=", testSize, "\n")
+cat(" MinSplit=", MinSplit, ", MinBucket=", MinBucket, ", MaxSurrogate=", MaxSurrogate, ", MaxDepth=", MaxDepth, "\n\n")
+allTotalDonation <- matrix(0, nrow=testSize, ncol=LoopNum)
+allAvgDonation <- matrix(0, nrow=testSize, ncol=LoopNum)
+allDonationPercentile <- matrix (0, nrow=testSize, ncol=LoopNum)
+
+for(loopCnt in 1:LoopNum){
+  cat(date(), ": iteration = ", loopCnt, "\n")
+  trainIdx<-sample(1:nRec,trainSize)
+  trainData<-cup98[trainIdx,]
+  testData<-cup98[-trainIdx,]
+  
+  myCtree<-ctree(TARGET_D~.,data=trainData,controls=ctree_control(minsplit=MinSplit, minbucket=MinBucket,
+  maxsurrogate=MaxSurrogate, maxdepth=MaxDepth))
+  print(object.size(myCtree),units="auto")
+  save(myCtree, file=paste("cup98-ctree-", paste(MinSplit,MinBucket,MaxSurrogate,MaxDepth,sep="-"), "-run-",
+                            loopCnt, ".rdata", sep=""))
+  figTitle <- paste("Tree", loopCnt)
+  plot(myCtree, main=figTitle, type="simple",
+       ip_args=list(pval=FALSE), ep_args=list(digits=0,abbreviate=TRUE),
+       tp_args=list(digits=2))
+  pred<-predict(myCtree,newdata=testData)
+  plot(pred,testData$TARGET_D)
+  print(sum(testData$TARGET_D[pred>cost]-cost))
+  s1<-sort(pred,decreasing=T,method="quick",index.return=T)
+  totalDonation<-cumsum(testData$TARGET_D[s1$ix])
+  avgDonation<-totalDonation/(1:testSize)
+  donationPercentile<-100*totalDonation/sum(testData$TARGET_D)
+  allTotalDonation[,loopCnt] <- totalDonation
+  allAvgDonation[,loopCnt] <- avgDonation
+  allDonationPercentile[,loopCnt] <- donationPercentile
+  plot(totalDonation, type="l")
+  grid()
+}
+graphics.off()
+cat(date(), ": Loop completed.\n\n\n")
+fnlTotalDonation <- rowMeans(allTotalDonation)
+fnlAvgDonation <- rowMeans(allAvgDonation)
+fnlDonationPercentile <- rowMeans(allDonationPercentile)
+rm(trainData, testData, pred)
+results <- data.frame(cbind(allTotalDonation,fnlTotalDonation))
+names(results) <- c(paste("run.",1:LoopNum), "Average")
+write.csv(results, paste("evaluation-TotalDonation-",strParameters, ".csv", sep=""))
+
+
+#模型评估
+result <- read.csv("evaluation-TotalDonation-1000-400-4-10.csv")
+
 ```
