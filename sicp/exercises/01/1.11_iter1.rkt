@@ -1,0 +1,7 @@
+(define (f n)
+  (f-iter 2 1 0 n))
+(define (f-iter a b c count)
+  (cond ((= count 0) c)
+        ((= count 1) b)
+        ((= count 2) a)
+      (else (f-iter (+ (* 3 c) (* 2 b) a) a b (- count 1)))))

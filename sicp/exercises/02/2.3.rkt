@@ -1,0 +1,16 @@
+(define (make-rect width-segment height-segment)
+  (cons width-segment height-segment))
+(define (rect-width r)
+  (car r))
+(define (rect-height r)
+  (cdr r))
+
+(define (perimeter-rect r)
+  (let ((width (segment-len (rect-width r)))
+        (height (segment-len (rect-height r))))
+    (* 2 (+ width height))))
+
+(define (area-rect r)
+  (let ((width (segment-len (rect-width r)))
+        (height (segment-len (rect-height r))))
+    (* width height)))
