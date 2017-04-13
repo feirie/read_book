@@ -1,0 +1,941 @@
+options
+{
+STATIC =false;
+COMMON_TOKEN_ACTION = false;
+TOKEN_MANAGER_USES_PARSER = false;
+}
+PARSER_BEGIN(S6j2)
+package com.company.F16.S6j2;
+import java.io.*;
+import java.util.*;
+class S6j2
+{
+  private PrintWriter outFile;
+  private S6j2SymTab st;
+  private S6j2CodeGen cg;
+  //-----------------------------------------
+  public static void main(String[] args) throws
+                                             IOException
+  {
+    System.out.println("S6j2 compiler written by ...");
+
+    if (args.length != 1)
+    {
+      System.err.println("Wrong number cmd line args");
+      System.exit(1);
+    }
+
+    // build input and output file names
+    String inFileName = args[0] + ".s";
+    String outFileName = args[0] + ".a";
+
+    // construct file objects
+    FileInputStream inFile =
+                       new FileInputStream(inFileName);
+    PrintWriter outFile = new PrintWriter(outFileName);
+
+    // identify compiler/author in output file
+    outFile.println("; from S6j2 compiler written by ...");
+
+    // construct objects that make up compiler
+    S6j2SymTab st = new S6j2SymTab();
+    S6j2CodeGen cg = new S6j2CodeGen(outFile, st);
+    S6j2 parser = new S6j2(inFile);
+
+    // initialize parser's instance variables
+    parser.outFile = outFile;
+    parser.st = st;
+    parser.cg = cg;
+
+    try
+    {
+      parser.program();
+    }
+    catch(ParseException e)
+    {
+      System.err.println(e.getMessage());
+      outFile.println(e.getMessage());
+      outFile.close();
+      System.exit(1);
+    }
+
+    outFile.close();
+  }
+  //-----------------------------------------
+  // If COMMON_TOKEN_ACTION is true, the token manager
+  // calls makeComment for each token to create the
+  // token trace.
+  //
+  public void makeComment(Token t)
+  {
+    outFile.printf(
+      "; kd=%3d bL=%3d bC=%3d eL=%3d eC=%3d im= %s%n",
+       t.kind, t.beginLine, t.beginColumn, t.endLine,
+       t.endColumn, t.image);
+  }
+}                                          // end of S6j2
+//======================================================
+class S6j2SymTab
+{
+      public static Integer LOCAL = 0;
+    public static Integer GLOBALVARIABLE = 1;
+    public static Integer EXTERNVARIABLE = 2;
+    public static Integer FUNCTIONDEFINITION = 3;
+    public static Integer FUNCTIONCALL = 4;
+    private ArrayList<String> symbol;
+    private ArrayList<Integer> relAddList;
+    private ArrayList<Integer> categoryList;
+    private Map<Integer,String> categoryMap = new HashMap<Integer, String>();
+    private Stack<String> breakLabelStack;
+    private Map<String,String> constantMap;
+
+    public void pushBreakLabel(String breakLabel){
+        this.breakLabelStack.push(breakLabel);
+    }
+    public String peekBreakLabel(){
+        return this.breakLabelStack.peek();
+    }
+    public String popBreakLabel(){
+        return this.breakLabelStack.pop();
+    }
+    //-----------------------------------------
+    public S6j2SymTab() {
+        symbol = new ArrayList<String>();
+        relAddList = new ArrayList<Integer>();
+        categoryList = new ArrayList<Integer>();
+        breakLabelStack = new Stack<String>();
+        constantMap = new HashMap<String, String>();
+        categoryMap.put(0,"LOCAL");
+        categoryMap.put(1,"GLOBALVARIABLE");
+        categoryMap.put(2,"EXTERNVARIABLE");
+        categoryMap.put(3,"FUNCTIONDEFINITION");
+        categoryMap.put(4,"FUNCTIONCALL");
+    }
+
+    //-----------------------------------------
+    public void enter(String s) {
+        int index = symbol.indexOf(s);
+
+        // if s is not in symbol, then add it
+        if (index < 0)
+            symbol.add(s);
+    }
+
+    public String getConstantLabel(String consVal){
+        if(!this.constantMap.containsKey(consVal)){
+            this.constantMap.put(consVal,consVal.startsWith("-")?"N"+consVal.replace("-",""):"O"+consVal);
+        }
+        return this.constantMap.get(consVal);
+    }
+
+
+    public Map<String,String> getConstantMap(){
+        return this.constantMap;
+    }
+
+    public void enter(String sym, int ra, int cat) {
+            int index = symbol.indexOf(sym);
+            if (index < 0){
+                symbol.add(sym);
+                relAddList.add(ra);
+                categoryList.add(cat);
+                System.out.println("sym="+sym+",ra="+ra+",cat="+categoryMap.get(cat));
+            }else{
+                Integer thisCat = categoryList.get(index);
+                if(cat == FUNCTIONDEFINITION && thisCat == FUNCTIONCALL){
+                    categoryList.set(index,FUNCTIONDEFINITION);
+                    System.out.println("sym="+sym+",ra="+ra+",cat="+categoryMap.get(FUNCTIONDEFINITION));
+                }else if(cat == LOCAL && (thisCat == GLOBALVARIABLE || thisCat == EXTERNVARIABLE)){
+                    symbol.add(sym);
+                    relAddList.add(ra);
+                    categoryList.add(cat);
+                    System.out.println("sym="+sym+",ra="+ra+",cat="+categoryMap.get(cat));
+                }
+            }
+    }
+
+    //-----------------------------------------
+    public String getSymbol(int i) {
+        return symbol.get(i);
+    }
+
+    //-----------------------------------------
+    public int getSize() {
+        return symbol.size();
+    }
+
+    public Integer getRelAdd(int i){
+        return relAddList.get(i);
+    }
+
+    public Integer getCategory(int i){
+        return categoryList.get(i);
+    }
+
+    public void localRemove(){
+        for(int i = symbol.size()-1;i>=0;i--){
+            Integer category = categoryList.get(i);
+            if(category == LOCAL){
+                categoryList.remove(i);
+                symbol.remove(i);
+                relAddList.remove(i);
+            }
+        }
+    }
+
+   public int find(String sym){
+        int idx = -1;
+        for (int i = symbol.size()-1; i >=0 ; i--) {
+            if(symbol.get(i).equals(sym)){
+                idx = i;
+                break;
+            }
+        }
+        if(idx == -1) throw new RuntimeException("");
+        return idx;
+    }
+}                                    // end of S6j2SymTab
+//======================================================
+class S6j2CodeGen
+{
+  private PrintWriter outFile;
+  private S6j2SymTab st;
+  private int labelNumber = 0;
+  //-----------------------------------------
+  public S6j2CodeGen(PrintWriter outFile, S6j2SymTab st)
+  {
+    this.outFile = outFile;
+    this.st = st;
+  }
+  //-----------------------------------------
+  public void emitInstruction(String op)
+  {
+    outFile.printf("          %-4s%n", op);
+  }
+  //-----------------------------------------
+  public void emitInstruction(String op, String opnd)
+  {
+    outFile.printf(
+                  "          %-4s      %s%n", op, opnd);
+  }
+  //-----------------------------------------
+  public void emitdw(String label, String value)
+  {
+    outFile.printf(
+             "%-9s dw        %s%n", label + ":", value);
+  }
+    public void emitLabel(String label)
+    {
+      outFile.printf(
+               "%-9s:%n", label);
+    }
+    public void emitString(String str)
+        {
+          outFile.printf(
+                   "//%s:%n", str);
+        }
+  //-----------------------------------------
+  public void endCode()
+  {
+    outFile.println();
+    emitInstruction("halt");
+
+    int size = st.getSize();
+    for (int i=0; i < size; i++){
+        if(S6j2SymTab.FUNCTIONCALL == st.getCategory(i)){
+            emitInstruction("extern",""+st.getSymbol(i));
+        }
+    }
+
+    Set<Map.Entry<String,String>> entrySet = st.getConstantMap().entrySet();
+      for(Map.Entry<String,String> entry:entrySet){
+          emitdw(entry.getValue(),entry.getKey());
+      }
+  }
+
+  public void pushAddress(int idx){
+        Integer category = st.getCategory(idx);
+        if(S6j2SymTab.LOCAL == category){
+            emitInstruction("cora",""+st.getRelAdd(idx));
+        }else{
+            emitInstruction("pc",""+st.getSymbol(idx));
+        }
+
+    }
+
+    public void push(int idx){
+        Integer category = st.getCategory(idx);
+        if(S6j2SymTab.LOCAL == category){
+            emitInstruction("pr",""+st.getRelAdd(idx));
+        }else{
+            emitInstruction("p",""+st.getSymbol(idx));
+        }
+      }
+
+  public String getLabel(){
+    return "@L"+labelNumber++;
+  }
+
+
+}                             // end of S6j2CodeGen class
+PARSER_END(S6j2)
+
+// Specification of the S6j2 token manager ==============
+
+TOKEN_MGR_DECLS:
+{
+  // called for each token returned to parser
+  void CommonTokenAction(Token t)
+  {
+    //parser.makeComment(t);
+  }
+}
+//------------------------------
+SKIP:  // these tokens are not returned to parser
+{
+   " "
+ |
+   "\n"
+ |
+   "\r"
+ |
+   "\t"
+ |
+   <"/" "/" (~["\r","\t"])*>
+}
+//------------------------------
+MORE:
+{
+    "\"":IN_STRING
+}
+TOKEN:  // these tokens are returned to parser
+{
+    <PRINTLN: "println">  // must precede <ID>
+    |
+    <PRINT: "print">  // must precede <ID>
+    |
+    <READINT: "readint">
+    |
+    <WHILE: "while">
+    |
+        <DO: "do">
+    |
+    <IF: "if">
+    |
+    <ELSE: "else">
+    |
+    <EXTERN: "extern">
+    |
+    <INT: "int">
+    |
+    <VOID: "void">
+    |
+    <RETURN: "return">
+    |
+    <BREAK: "break">
+    |
+    <UNSIGNED: (["0"-"9"])+>
+    |
+    <ID: ["A"-"Z","a"-"z"] (["A"-"Z","a"-"z","0"-"9"])*>
+    |
+    <ASSIGN: "=">
+    |
+    <GT:">">
+    |
+    <LT:"<">
+    |
+    <EQ:"==">
+    |
+    <NE:"!=">
+    |
+    <GE:">=">
+    |
+    <LE:"<=">
+    |
+    <SEMICOLON: ";">
+    |
+    <COMMA: ",">
+    |
+    <LEFTPAREN: "(">
+    |
+    <RIGHTPAREN: ")">
+    |
+    <LEFTANGLEPAREN: "{">
+    |
+    <RIGHTANGLEPAREN: "}">
+    |
+    <PLUS: "+">
+    |
+    <MINUS: "-">
+    |
+    <TIMES: "*">
+    |
+    <DIVIDE: "/">
+    |
+    <REMAINDER: "%">
+    |
+    <ERROR: ~[]>  // matches any single character
+}
+<IN_STRING>
+MORE:
+{
+    "\\\""
+    |
+    "\\\\"
+    |
+    "\\\r\n"
+    {image.setLength(image.length()-3);}
+    |
+    "\\\r"
+    {image.setLength(image.length()-2);}
+    |
+    "\\\n"
+    {image.setLength(image.length()-2);}
+    |
+    <~["\"","\n","\r"]>
+}
+<IN_STRING>
+TOKEN:
+{
+    <STRING:"\"">
+{
+    matchedToken.image = image.toString();
+     //System.out.println("after matchedToken.image="+matchedToken.image);
+ }
+                     :DEFAULT
+
+}
+// Translation grammar for S6j2 and S1 ==================
+
+void program(): {}
+{
+   programUnitList()
+   {cg.endCode();}
+   <EOF>
+}
+
+void programUnitList():{}
+{
+    {if(getToken(1).kind == EOF) return;}
+    programUnit()
+    programUnitList()
+}
+void programUnit():{}
+{
+
+    externDeclaration()
+    |
+    voidFunctionDefinition()
+    |
+    (
+    LOOKAHEAD(3)
+    globalDeclaration()
+    |
+    functionDefinition()
+    )
+}
+void voidFunctionDefinition():{Token t;}
+{
+    "void"
+    t=<ID>
+    {cg.emitString(
+          "; =============== start of function " + t.image);}
+    {cg.emitInstruction("public",t.image);}
+    {cg.emitLabel(t.image);}
+    {st.enter(t.image,0,S6j2SymTab.FUNCTIONDEFINITION);}
+    "("
+    parameterList()
+    ")"
+    "{"
+    {cg.emitInstruction("esba");}
+    localDeclarations()
+    statementList()
+    "}"
+    {cg.emitInstruction("reba");}
+    {cg.emitInstruction("ret");}
+    {cg.emitString(
+          "; =============== end of function " + t.image);}
+    {st.localRemove();}
+}
+void functionDefinition():{Token t;int paraSize;}
+{
+    "int"
+    t=<ID>
+    {cg.emitString(
+          "; =============== start of function " + t.image);}
+    {cg.emitInstruction("public",t.image);}
+    {cg.emitLabel(t.image);}
+    {st.enter(t.image,0,S6j2SymTab.FUNCTIONDEFINITION);}
+    "("
+    paraSize=parameterList()
+    {cg.emitString(
+              "; parameterList() " + paraSize);}
+    ")"
+    "{"
+    {cg.emitInstruction("esba");}
+    localDeclarations()
+    statementList()
+    {cg.emitInstruction("cora",""+(paraSize + 1));}
+    returnStatement()
+    "}"
+    {cg.emitInstruction("reba");}
+    {cg.emitInstruction("ret");}
+    {cg.emitString(
+          "; =============== end of function " + t.image);}
+    {st.localRemove();}
+}
+int parameterList():{Token t;int p;}
+{
+    (t=parameter()
+    p=parameterR()
+    {st.enter(t.image,p,S6j2SymTab.LOCAL);}
+    {return p;}
+    )
+    |
+    {return 1;}
+}
+Token parameter():{Token t;}
+{
+    "int"
+    t=<ID>
+    {return t;}
+}
+int parameterR():{Token t;int p;}
+{
+    ","
+    t=parameter()
+    p=parameterR()
+    {st.enter(t.image,p,S6j2SymTab.LOCAL);}
+    {return p+1;}
+    |
+    {return 2;}
+}
+void localDeclarations():{int relativeAddress = -1;}
+{
+    ("int"
+    local(relativeAddress--)
+    (
+    ","
+    local(relativeAddress--)
+    )*
+    ";")*
+}
+void local(int relativeAddress):{Token t;String sign;}
+{
+    t=<ID>
+    {st.enter(t.image,relativeAddress,S6j2SymTab.LOCAL);}
+    (
+        ("="
+        {sign = "";}
+        (<PLUS>|<MINUS>{sign="-";})?
+        t=<UNSIGNED>
+        {cg.emitInstruction("p", st.getConstantLabel(sign+t.image));}
+        )
+        |
+        {cg.emitInstruction("asp","-1");}
+    )
+}
+void globalDeclaration():{}
+{
+    "int"
+    global()
+    (
+    ","
+    global()
+    )*
+    ";"
+}
+void global():{Token t1,t2;String initVal;}
+{
+    t1=<ID>
+    {cg.emitInstruction("public",t1.image);}
+    {initVal="0";}
+    (
+    "="
+    {initVal="";}
+    (<PLUS>|<MINUS>{initVal="-";})?
+    t2=<UNSIGNED>
+    {initVal = initVal + t2.image;}
+    )?
+    {cg.emitdw(t1.image,initVal);}
+    {st.enter(t1.image,0,S6j2SymTab.GLOBALVARIABLE);}
+}
+void externDeclaration():{Token t;Token t2;}
+{
+    "extern"
+    "int"
+    t=<ID>
+    {cg.emitInstruction("extern",t.image);}
+    {st.enter(t.image,0,S6j2SymTab.EXTERNVARIABLE);}
+    (
+    ","
+    t2=<ID>
+    {cg.emitInstruction("extern",t2.image);}
+    {st.enter(t2.image,0,S6j2SymTab.EXTERNVARIABLE);}
+    )*
+    ";"
+}
+//------------------------------
+void statementList(): {}
+{
+   statement()
+   statementList()
+ |
+   {}
+}
+//------------------------------
+void statement(): {}
+{
+    try{
+        LOOKAHEAD(2)
+        assignmentStatement()
+        |
+        printlnStatement()
+        |
+        printStatement()
+        |
+        nullStatement()
+        |
+        compoundStatement()
+        |
+        readintStatement()
+        |
+        whileStatement()
+        |
+        ifStatement()
+        |
+        doWhileStatement()
+        |
+        functionCall()
+        |
+        breakStatement()
+     }catch(ParseException e){
+        System.err.println("=="+e.getMessage());
+        cg.emitString(e.getMessage());
+        while(getToken(1).kind != SEMICOLON && getToken(1).kind !=EOF){
+            getNextToken();
+        }
+     }
+}
+void functionCall():{Token t;int count;}
+{
+    t = <ID>
+    {st.enter(t.image,0,S6j2SymTab.FUNCTIONCALL);}
+    "("
+    {count =0;}
+    (count = argumentList()
+    )?
+    {cg.emitInstruction("call", t.image);}
+    {
+    if(count>0){
+        cg.emitInstruction("asp", ""+count);
+    }
+    }
+    ")"
+    (";"
+    |
+    {}
+    )
+}
+void returnStatement():{}
+{
+    "return"
+    equalityExpression()
+    {cg.emitInstruction("stav");}
+    ";"
+}
+int argumentList():{int count;}
+{
+    equalityExpression()
+    {count = 1;}
+    (
+    ","
+    equalityExpression()
+    {count++;}
+    )*
+    {return count;}
+}
+//------------------------------
+void assignmentStatement(): {Token t;int idx;}
+{
+
+   t=<ID>
+   {idx=st.find(t.image);}
+   {cg.pushAddress(idx);}
+   "="
+   (
+   LOOKAHEAD(2)
+   assignmentTail()
+   {cg.emitInstruction("stav");}
+   |
+   functionCall()
+   {cg.emitInstruction("stav");}
+   )
+}
+void whileStatement():{String label1,label2,label3;}
+{
+    "while"
+    {label1=cg.getLabel();}
+    {label2=cg.getLabel();}
+    {cg.emitLabel(label1);}
+    "("
+    equalityExpression()
+    ")"
+    {cg.emitInstruction("jz", label2);}
+    {st.pushBreakLabel(label2);}
+    statement()
+    {st.popBreakLabel();}
+    {cg.emitInstruction("ja", label1);}
+    {cg.emitLabel(label2);}
+}
+void doWhileStatement():{String label1,label2;}
+{
+    "do"
+    {label1=cg.getLabel();}
+    {label2=cg.getLabel();}
+    {st.pushBreakLabel(label2);}
+    {cg.emitLabel(label1);}
+    statement()
+    {st.popBreakLabel();}
+    "while"
+    "("
+    equalityExpression()
+    ")"
+    {cg.emitInstruction("jnz", label1);}
+    {cg.emitLabel(label2);}
+}
+void ifStatement():{String label1;}
+{
+    "if"
+    "("
+    equalityExpression()
+    ")"
+    {label1=cg.getLabel();}
+    {cg.emitInstruction("jz", label1);}
+    statement()
+    elsePart(label1)
+
+}
+void elsePart(String label1):{String label2;}
+{
+    "else"
+    {label2=cg.getLabel();}
+    {cg.emitInstruction("ja", label2);}
+    {cg.emitLabel(label1);}
+    statement()
+    {cg.emitLabel(label2);}
+    |
+    {}
+    {cg.emitLabel(label1);}
+}
+void assignmentTail(): {Token t;int idx;}
+{
+LOOKAHEAD(2)
+   t=<ID>
+   {idx=st.find(t.image);}
+   {cg.pushAddress(idx);}
+   "="
+   assignmentTail()
+   {cg.emitInstruction("dupe");}
+   {cg.emitInstruction("rot");}
+   {cg.emitInstruction("stav");}
+   |
+   equalityExpression()
+   ";"
+}
+void readintStatement():{Token t;int index;}
+{
+    "readint"
+    "("
+    t=<ID>
+    {index=st.find(t.image);}
+   {cg.pushAddress(index);}
+   {cg.emitInstruction("din");}
+   {cg.emitInstruction("stav");}
+    ")"
+    ";"
+
+}
+//------------------------------
+void printlnStatement(): {}
+{
+   "println"
+   "("
+   (
+        printArg()
+        |
+        {}
+   )
+
+   {cg.emitInstruction("pc", "'\\n'");}
+   {cg.emitInstruction("aout");}
+   ")"
+   ";"
+}
+void printStatement(): {}
+{
+   "print"
+   "("
+   (
+        printArg()
+   )
+   ")"
+   ";"
+}
+void breakStatement(): {}
+{
+   "break"
+   {cg.emitInstruction("ja", st.peekBreakLabel());}
+   ";"
+}
+void nullStatement():{}
+{
+    ";"
+}
+void compoundStatement():{}
+{
+    "{"
+    statementList()
+    "}"
+}
+void printArg():{Token t;String label;}
+{
+    equalityExpression()
+    {cg.emitInstruction("dout");}
+    |
+  t=<STRING>
+  {label=cg.getLabel();}
+  {cg.emitInstruction("pc", label);}
+  {cg.emitInstruction("sout");}
+  {cg.emitdw("^"+label, t.image);}
+}
+//------------------------------
+void additiveExpr(): {Token t;}
+{
+   term()
+   (
+    (t="+"|t="-")
+    term()
+    {
+        if(t.kind == PLUS){
+            cg.emitInstruction("add");
+        }else if(t.kind == MINUS){
+            cg.emitInstruction("sub");
+        }
+    }
+   )*
+}
+void equalityExpression():{Token t;}
+{
+    relationalExpression()
+    (
+        (t="=="|t="!=")
+        relationalExpression()
+        {
+           if(t.kind == EQ){
+               cg.emitInstruction("cmps", "2");
+           }else if(t.kind == NE){
+               cg.emitInstruction("cmps", "5");
+           }
+        }
+    )*
+}
+void relationalExpression():{Token t;}
+{
+    additiveExpr()
+    (
+        (t="<"|t="<="|t=">"|t=">=")
+        additiveExpr()
+        {
+           if(t.kind == LT){
+               cg.emitInstruction("cmps", "4");
+           }else if(t.kind == LE){
+               cg.emitInstruction("cmps", "6");
+           }else if(t.kind == GT){
+               cg.emitInstruction("cmps", "1");
+           }else if(t.kind == GE){
+               cg.emitInstruction("cmps", "3");
+           }
+        }
+
+    )*
+}
+//------------------------------
+
+//------------------------------
+void term(): {Token t;}
+{
+    factor()
+  (
+      (t="*" | t="/" | t="%")
+
+      factor()
+      {
+           if(t.kind == TIMES){
+               cg.emitInstruction("mult");
+           }else if(t.kind == DIVIDE){
+               cg.emitInstruction("div");
+           }else if(t.kind == REMAINDER){
+               cg.emitInstruction("rem");
+           }
+      }
+  )*
+}
+
+//------------------------------
+void factor(): {Token t;String label;int index;}
+{
+   t=<UNSIGNED>
+   {cg.emitInstruction("p", st.getConstantLabel(""+t.image));}
+   {
+        if(t.image.length()>5 || Integer.parseInt(t.image)>32767){
+            throw new RuntimeException("Expecting integer (-32768 to 32767)");
+        }
+   }
+ |
+ (LOOKAHEAD(2)
+ functionCall()
+ |
+   t=<ID>
+   {index=st.find(t.image);}
+   {cg.push(index);}
+ )
+   |
+   "("
+   additiveExpr()
+   ")"
+  |
+  "+"
+  factor()
+  |
+
+  "-"
+  (
+        t=<UNSIGNED>
+        {cg.emitInstruction("p", st.getConstantLabel("-"+t.image));}
+        {
+            if(t.image.length()>5 || Integer.parseInt(t.image)>32768){
+                throw new RuntimeException("Expecting integer (-32768 to 32767)");
+            }
+       }
+        |
+        t=<ID>
+        {index=st.find(t.image);}
+        {cg.push(index);}
+        {cg.emitInstruction("neg");}
+        |
+        "("
+        additiveExpr()
+        ")"
+        {cg.emitInstruction("neg");}
+        |
+        "+"
+        factor()
+        {cg.emitInstruction("neg");}
+        |
+        "-"
+        factor()
+
+  )
+}
+
